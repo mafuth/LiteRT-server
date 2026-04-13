@@ -36,3 +36,5 @@ LOG_FILE_PATH = os.getenv('LOG_FILE_PATH', 'logs/app.log')
 # LLM Configuration
 LLM_MODEL_FILENAME = os.getenv('LLM_MODEL', 'gemma4-4B')
 LLM_BACKEND = os.getenv('LLM_BACKEND', 'CPU')
+LLM_AUDIO_BACKEND = os.getenv('LLM_AUDIO_BACKEND', 'CPU')
+LLM_VISION_BACKEND = os.getenv('LLM_VISION_BACKEND', 'CPU')
