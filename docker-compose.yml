@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  api-server:
+    build: .
+    container_name: litert-api-server
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    # If using GPU, uncomment the following block
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+      open-webui:
+        image: ghcr.io/open-webui/open-webui:main
+        container_name: open-webui
+        ports:
+          - "3000:8080"
+        environment:
+          - 'OPENAI_API_BASE_URL=http://api-server:8000/v1'
+          - 'OPENAI_API_KEY=not-needed'
+          - 'WEBUI_SECRET_KEY=t0p-s3cr3t'
+        volumes:
+          - open-webui:/app/backend/data
+        depends_on:
+          api-server:
+            condition: service_healthy
+        restart: unless-stopped
+
+    volumes:
+      open-webui:

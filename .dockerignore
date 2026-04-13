@@ -1,0 +1,45 @@
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+develop-eggs/
+dist/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Logs and databases
+logs/
+*.log
+*.sqlite
+
+# Large files/folders
+models/
+default.profraw
+
+# IDEs and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
