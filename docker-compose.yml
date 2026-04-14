@@ -36,11 +36,8 @@ services:
           - 'OPENAI_API_KEY=not-needed'
           - 'WEBUI_SECRET_KEY=t0p-s3cr3t'
         volumes:
-          - open-webui:/app/backend/data
+          - ./open-webui:/app/backend/data
         depends_on:
           api-server:
             condition: service_healthy
         restart: unless-stopped
-
-    volumes:
-      open-webui:
