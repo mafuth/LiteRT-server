@@ -1,4 +1,4 @@
-"""Main FastAPI application factory for BSCS SOAP to REST middleware."""
+"""LiteRT-LM OpenAI-compatible inference server."""
 
 import time
 import sys
@@ -6,41 +6,35 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from lib.classes.llmEngine import LlmEngine
+from lib.classes.logger import LoggerManager
 from routes import chat
 
 from lib.config import (
     APP_TITLE,
     APP_DESCRIPTION,
     APP_VERSION,
-    APP_ENV,
     CORS_ALLOW_ORIGINS,
     CORS_ALLOW_CREDENTIALS,
     CORS_ALLOW_METHODS,
-    CORS_ALLOW_HEADERS
+    CORS_ALLOW_HEADERS,
 )
 
-# Delay logger initialization to avoid database connection during config generation
-logger = None
+logger = LoggerManager("main")
 
-def get_logger():
-    """Lazy initialization of logger to prevent database connection during config generation."""
-    global logger
-    if logger is None:
-        from lib.classes.logger import LoggerManager
-        logger = LoggerManager("main")
-    return logger
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events."""
-    
-    get_logger().info(f"Starting {APP_TITLE}")
+    logger.info(f"Starting {APP_TITLE}")
 
-    app.state.llmEngine = LlmEngine()
-    
+    llm = LlmEngine()
+    llm.load()  # load model at startup - eliminates cold-start on first request
+    app.state.llmEngine = llm
+
     yield
-    
-    get_logger().info(f"Shutting down {APP_TITLE}")
+
+    logger.info(f"Shutting down {APP_TITLE}")
+    LoggerManager.shutdown()
 
 
 def create_app() -> FastAPI:
@@ -51,9 +45,9 @@ def create_app() -> FastAPI:
         title=APP_TITLE,
         description=APP_DESCRIPTION,
         version=APP_VERSION,
-        lifespan=lifespan
+        lifespan=lifespan,
     )
-    
+
     # Add CORS middleware
     app.add_middleware(
         CORSMiddleware,
@@ -64,9 +58,8 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(chat.router, prefix="/v1")
-    
-    return app
 
+    return app
 
 # Create the application instance
 app = create_app()
@@ -79,7 +72,7 @@ async def root():
         "title": APP_TITLE,
         "version": APP_VERSION,
         "redoc": "/redoc",
-        "swagger": "/docs"
+        "swagger": "/docs",
     }
 
 
@@ -89,13 +82,12 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": time.time(),
-        "version": APP_VERSION
+        "version": APP_VERSION,
     }
 
 
 if __name__ == "__main__":
     import uvicorn
-    import sys
     from lib.config import (
         UVICORN_HOST,
         UVICORN_PORT,
@@ -104,22 +96,32 @@ if __name__ == "__main__":
         UVICORN_LOOP,
         UVICORN_HTTP,
         UVICORN_ACCESS_LOG,
-        APP_TITLE
     )
 
-    uvicorn_config = {
-        "app": "main:app",
-        "host": UVICORN_HOST,
-        "port": UVICORN_PORT,
-        "reload": UVICORN_RELOAD,
-        "workers": UVICORN_WORKERS,
-        "loop": UVICORN_LOOP,
-        "http": UVICORN_HTTP,
-        "access_log": UVICORN_ACCESS_LOG
-    }
-    
-    uvicorn.run(**uvicorn_config)
+    workers = UVICORN_WORKERS
+    reload = UVICORN_RELOAD
+
+    if reload and workers > 1:
+        logger.warning(
+            "UVICORN_RELOAD=true is incompatible with multiple workers. Forcing workers=1."
+        )
+        workers = 1
+
+    if workers > 1:
+        logger.warning(
+            f"UVICORN_WORKERS={workers}: each worker process loads its own model copy. "
+            "The asyncio lock does not serialize across processes. "
+            "Set UVICORN_WORKERS=1 unless you have enough memory for multiple model copies."
+        )
+
+    uvicorn.run(
+        "main:app",
+        host=UVICORN_HOST,
+        port=UVICORN_PORT,
+        reload=reload,
+        workers=workers,
+        loop=UVICORN_LOOP,
+        http=UVICORN_HTTP,
+        access_log=UVICORN_ACCESS_LOG,
+    )
     sys.exit(0)
-    
-    
-     

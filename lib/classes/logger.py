@@ -16,10 +16,10 @@ from lib.config import (
 
 class LoggerManager:
     _configured = False
-    _listener = None
-    _queue = None
+    _listener: QueueListener | None = None
+    _queue: Queue | None = None
 
-    def __init__(self, name):
+    def __init__(self, name: str):
         self.logger = logging.getLogger(name)
         if not LoggerManager._configured:
             self._setup_logging()
@@ -27,48 +27,50 @@ class LoggerManager:
         # return self.logger
 
     @classmethod
-    def _setup_logging(cls, log_file=None):
+    def _setup_logging(cls, log_file: str | None = None) -> None:
         if log_file is None:
             log_file = LOG_FILE_PATH
 
         # Root logger
         root = logging.getLogger()
-        numeric_level = getattr(logging, LOG_LEVEL.upper(), logging.DEBUG)
+        numeric_level = getattr(logging, LOG_LEVEL.upper(), logging.INFO)
         root.setLevel(numeric_level)
 
         # --- Create the queue ---
-        log_queue = Queue(-1)
+        log_queue: Queue = Queue(-1)
         cls._queue = log_queue
 
         # --- Handlers (they will run in listener thread) ---
-        handlers = []
+        handlers: list[logging.Handler] = []
 
         # Console handler
         console_handler = logging.StreamHandler()
-        console_formatter = logging.Formatter(
-            "%(asctime)s - [PID:%(process)d] - %(levelname)s - %(name)s - %(message)s"
+        console_handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s - [PID:%(process)d] - %(levelname)s - %(name)s - %(message)s"
+            )
         )
-        console_handler.setFormatter(console_formatter)
         handlers.append(console_handler)
 
-        if APP_ENV == 'dev':
-            root.info(f"logging to file in {APP_ENV} env")
-            # File handler
-            if log_file.lower() != "stdout":
-                try:
-                    os.makedirs(os.path.dirname(log_file), exist_ok=True)
-                    file_handler = TimedRotatingFileHandler(
-                        filename=log_file,
-                        when=LOG_ROTATION_WHEN,
-                        interval=LOG_ROTATION_INTERVAL,
-                        backupCount=LOG_BACKUP_COUNT,
-                        encoding="utf-8"
-                    )
-                    file_handler.suffix = "%Y-%m-%d"
-                    file_handler.setFormatter(JSONFormatter())
-                    handlers.append(file_handler)
-                except Exception as e:
-                    root.warning(f"Could not setup file handler: {e}")
+        # File handler only in dev, and only when a real path is configured
+        if APP_ENV == 'dev' and log_file.lower() != 'stdout':
+            try:
+                log_dir = os.path.dirname(log_file)
+                if log_dir:
+                    os.makedirs(log_dir, exist_ok=True)
+                file_handler = TimedRotatingFileHandler(
+                    filename=log_file,
+                    when=LOG_ROTATION_WHEN,
+                    interval=LOG_ROTATION_INTERVAL,
+                    backupCount=LOG_BACKUP_COUNT,
+                    encoding='utf-8',
+                )
+                file_handler.suffix = '%Y-%m-%d'
+                file_handler.setFormatter(JSONFormatter())
+                handlers.append(file_handler)
+            except Exception as e:
+                # Can't use the logger here - it isn't set up yet. Print is safe.
+                print(f"WARNING: Could not set up file log handler: {e}")
 
         # --- Queue handler and listener setup ---
         queue_handler = QueueHandler(log_queue)
@@ -76,16 +78,17 @@ class LoggerManager:
 
         listener = QueueListener(log_queue, *handlers, respect_handler_level=True)
         listener.start()
-
         cls._listener = listener
 
-        root.info("Logging system initialized with QueueHandler")
+        root.info("Logging system initialized (env=%s, level=%s)", APP_ENV, LOG_LEVEL)
 
     @classmethod
-    def shutdown(cls):
-        """Gracefully stop the QueueListener when app exits"""
+    def shutdown(cls) -> None:
+        """Gracefully stop the QueueListener and allow re-configuration on next init."""
         if cls._listener:
             cls._listener.stop()
+            cls._listener = None
+        cls._configured = False
 
     def debug(self, msg, *args, **kwargs):
         self.logger.debug(msg, *args, **kwargs)
@@ -104,4 +107,3 @@ class LoggerManager:
 
     def critical(self, msg, *args, **kwargs):
         self.logger.critical(msg, *args, **kwargs)
-
